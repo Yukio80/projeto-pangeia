@@ -284,7 +284,7 @@ class PAPProtocol:
             content=message,
             message_type=channel if channel in ("media", "public") else "public",
         )
-        sim.communication.broadcast(msg, sim.agents)
+        sim.communication.broadcast(msg, sim.agents, tick=sim.world.state.tick)
         agent.interaction_count += 1
         return {
             "status": "broadcast",

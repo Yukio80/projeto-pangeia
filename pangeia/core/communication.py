@@ -28,12 +28,14 @@ class CommunicationSystem:
         }
 
     def broadcast(self, message: Message, agents: Dict[str, "Agent"],
-                  max_targets: int = 50):
+                  tick: int, max_targets: int = 20):
         self.channels["public"].append(message)
         target_ids = message.target_ids or list(agents.keys())
         if len(target_ids) > max_targets:
+            # Media messages get more targets
+            limit = 30 if message.message_type == "media" else max_targets
             import random
-            target_ids = random.sample(target_ids, max_targets)
+            target_ids = random.sample(target_ids, limit)
         for tid in target_ids:
             if tid in agents:
                 recipient = agents[tid]
@@ -44,6 +46,7 @@ class CommunicationSystem:
                     f"Heard from {message.sender_id}: {message.content}",
                     memory_type="communication",
                     importance=importance,
+                    timestamp=float(tick),
                 )
                 if message.truth_value is not None:
                     recipient.knowledge.add_shared_knowledge(
@@ -70,6 +73,7 @@ class CommunicationSystem:
                             f"Rumor from {sid}: {content}",
                             memory_type="rumor",
                             importance=0.4,
+                            timestamp=float(random.randint(0, 100)), # Placeholder - need tick
                         )
                         recipient.knowledge.add_shared_knowledge(
                             proposition=content,

@@ -102,7 +102,7 @@ def _handle_make_speech(sim, agent, tick):
         message_type="media",
         truth_value=True,
     )
-    sim.communication.broadcast(msg, sim.agents)
+    sim.communication.broadcast(msg, sim.agents, tick=sim.world.state.tick)
 
 
 def _handle_contemplating(sim, agent, tick):

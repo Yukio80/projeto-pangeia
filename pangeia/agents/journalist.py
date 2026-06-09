@@ -37,7 +37,7 @@ class Journalist(Agent):
                 message_type="media",
                 truth_value=self.rng.random() > abs(self.bias),
             )
-            sim.communication.broadcast(msg, sim.agents)
+            sim.communication.broadcast(msg, sim.agents, tick=sim.world.state.tick)
 
             self.state.influence += 0.02
             actions.append(f"published:{article[:30]}")

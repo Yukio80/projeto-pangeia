@@ -38,7 +38,7 @@ class Philosopher(Agent):
                 content=idea,
                 message_type="media",
             )
-            sim.communication.broadcast(msg, sim.agents)
+            sim.communication.broadcast(msg, sim.agents, tick=sim.world.state.tick)
 
             actions.append(f"idea:{idea[:30]}")
 

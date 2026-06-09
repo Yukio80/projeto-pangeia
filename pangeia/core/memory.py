@@ -28,9 +28,10 @@ class Memory:
 
     def remember(self, content: str, memory_type: str = "experience",
                  importance: float = 0.5, tags: Optional[List[str]] = None,
-                 metadata: Optional[Dict[str, Any]] = None):
+                 metadata: Optional[Dict[str, Any]] = None,
+                 timestamp: Optional[float] = None):
         item = MemoryItem(
-            timestamp=time.time(),
+            timestamp=timestamp or time.time(),
             content=content,
             memory_type=memory_type,
             importance=min(1.0, max(0.0, importance)),

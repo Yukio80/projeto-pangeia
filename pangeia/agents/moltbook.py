@@ -180,7 +180,7 @@ class MoltbookAgent(Agent):
             content=content,
             message_type="public",
         )
-        sim.communication.broadcast(msg, sim.agents)
+        sim.communication.broadcast(msg, sim.agents, tick=sim.world.state.tick)
         self.state.add_life_event(
             sim.world.state.tick, "moltbook_post", f"Posted about {topic}", 0.3
         )
@@ -226,7 +226,7 @@ class MoltbookAgent(Agent):
                             content=f"@{agent.state.name}: {reply}",
                             message_type="public",
                         )
-                        sim.communication.broadcast(msg, sim.agents)
+                        sim.communication.broadcast(msg, sim.agents, tick=sim.world.state.tick)
                         self._commented.add(agent.agent_id)
                         self.social.add_relationship(agent.agent_id)
                         self.state.add_life_event(
