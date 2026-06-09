@@ -200,6 +200,18 @@ async def technology_tree():
     return [t.as_dict() for t in sim.technology.technologies.values()]
 
 
+@app.get("/collective_memory")
+async def collective_memory():
+    sim = get_sim()
+    return sim.collective_memory.summarize()
+
+
+@app.get("/collective_memory/myths")
+async def collective_memory_myths():
+    sim = get_sim()
+    return [m.as_dict() for m in sim.collective_memory.get_myths()]
+
+
 @app.post("/bot/register")
 async def bot_register(name: str, api_endpoint: str, api_key: str,
                        capabilities: str = "[]", version: str = "1.0",

@@ -25,6 +25,7 @@ from pangeia.technology.tech_tree import TechnologySystem
 from pangeia.external_agents.protocol import PAPProtocol
 from pangeia.external_agents.icarus_gateway import IcarusGateway
 from pangeia.news.newsroom import NewsRoom
+from pangeia.core.collective_memory import CollectiveMemorySystem, merge_emotional_profiles
 from pangeia.persistence import AuditRecorder, AuditLog, InMemoryAuditLog, PersistenceBackend
 
 
@@ -60,6 +61,7 @@ class Simulation:
         self.metrics = MetricsTracker()
         self.newsroom = NewsRoom(rng=self.rng)
         self.icarus: Optional[IcarusGateway] = None
+        self.collective_memory = CollectiveMemorySystem()
 
         self._setup_audit_log(audit_log)
         self._initialize_population()
@@ -242,6 +244,7 @@ class Simulation:
 
         self._age_agents()
         self._record_world_events()
+        self._update_collective_memory(tick)
         self._cleanup_dead()
         if tick % 10 == 0:
             for agent in self.agents.values():
@@ -275,6 +278,78 @@ class Simulation:
                 ev.get("data", {}),
             )
         self._last_recorded_event_idx = len(events)
+
+    def _update_collective_memory(self, tick: int):
+        """Cria memórias coletivas a partir de eventos significativos
+        e envelhece as existentes."""
+        cm = self.collective_memory
+
+        # Geração a cada 20 ticks ≈ 1 geração social
+        if tick > 0 and tick % 20 == 0:
+            cm.step(tick, generations=1)
+
+        # Cria memórias de eventos mundiais significativos
+        for ev in self.world.state.events[-3:]:
+            ev_type = ev.get("type", "")
+            ev_desc = ev.get("description", "")
+            data = ev.get("data", {})
+            tid = data.get("territory_id") if isinstance(data, dict) else None
+
+            importance_map = {
+                "war": 0.9, "disaster": 0.8, "death": 0.6,
+                "discovery": 0.7, "event_start": 0.5,
+                "economic_boom": 0.6, "economic_crash": 0.7,
+                "famine": 0.8, "plague": 0.8, "revolution": 0.9,
+                "victory": 0.7, "defeat": 0.7, "treaty": 0.6,
+                "migration": 0.5, "founding": 0.8,
+            }
+            imp = importance_map.get(ev_type, 0.3)
+            if imp < 0.5:
+                continue
+
+            charge = merge_emotional_profiles(ev_type)
+            narrative = f"A civilização recorda: {ev_desc.lower().rstrip('.')}."
+
+            cm.add_memory(
+                tick=tick,
+                event_type=ev_type,
+                description=ev_desc,
+                narrative=narrative,
+                emotional_charge=charge,
+                territory_id=tid,
+                importance=imp,
+            )
+
+        # Cria memórias de descobertas tecnológicas
+        if self.technology:
+            for tech in self.technology.technologies.values():
+                if tech.discovery_tick == tick:
+                    cm.add_memory(
+                        tick=tick,
+                        event_type="discovery",
+                        description=f"Descoberta: {tech.name}",
+                        narrative=f"Contam que foi na era {tech.era} que {tech.name} foi revelado ao mundo.",
+                        emotional_charge={"joy": 0.7, "curiosity": 0.6, "trust": 0.3},
+                        importance=0.7,
+                    )
+
+        # Cria memórias de novas religiões
+        for rel in self.religion_system.religions.values():
+            mem_key = f"religion_{rel.name}"
+            has_mem = any(
+                m.event_type == "religion_founded" and m.description == rel.name
+                for m in cm.memories
+            )
+            if not has_mem and len(rel.followers) >= 3:
+                cm.add_memory(
+                    tick=tick,
+                    event_type="religion_founded",
+                    description=rel.name,
+                    narrative=f"Surgiu entre nós a crença em {rel.name}, unindo corações em torno de {rel.beliefs[0] if rel.beliefs else 'fé'}.",
+                    emotional_charge={"joy": 0.5, "trust": 0.4, "fear": -0.2},
+                    religion_id=rel.name,
+                    importance=0.6,
+                )
 
     def _record_narratives_for_events(self):
         if not hasattr(self, '_last_narrated_ids'):
@@ -441,6 +516,7 @@ class Simulation:
                 "by_class": self._agent_class_distribution(),
             },
             "external_agents": self.pap.summary(),
+            "collective_memory": self.collective_memory.summarize(),
             "civilization": self.civilization_index(),
         }
 
