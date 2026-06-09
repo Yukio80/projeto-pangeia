@@ -72,6 +72,7 @@ class Simulation:
         self.batch_processor = BatchProcessor.from_seed(
             self.agent_array, self.config.world.seed
         )
+        self._personality_influence = False
 
     def _setup_audit_log(self, audit_log: Optional[AuditLog] = None):
         persistence = self.config.persistence
@@ -193,6 +194,32 @@ class Simulation:
     def _initialize_stratification(self):
         self.stratification.assign_classes(self.agents)
 
+    def _personality_rerank(self, agent: Agent, actions: list, tick: int) -> list:
+        """Reordena ações secundárias por alinhamento com a personalidade.
+
+        A ação principal (índice 0) mantém-se — são decisões de
+        sobrevivência/emprego. Apenas ações secundárias (socializar,
+        aprender, etc.) são reordenadas para refletir preferências
+        da personalidade.
+
+        Quando a personalidade está desativada (ablação), todas as
+        ações secudárias têm peso neutro.
+        """
+        if len(actions) <= 1:
+            return actions
+
+        if self._personality_influence:
+            scored = []
+            for i, act in enumerate(actions):
+                if i == 0:
+                    scored.append((act, 999.0))
+                else:
+                    score = agent.compute_action_score(act, tick)
+                    scored.append((act, score))
+            scored.sort(key=lambda x: -x[1])
+            return [s[0] for s in scored]
+        return actions
+
     def step(self):
         tick = self.world.state.tick
 
@@ -212,6 +239,7 @@ class Simulation:
                 continue
             try:
                 actions = agent.decide(self)
+                actions = self._personality_rerank(agent, actions, tick)
                 for action in actions:
                     self._process_action(agent, action, tick)
                     if action.startswith("discovered:"):
@@ -280,20 +308,23 @@ class Simulation:
         for agent in self.agents.values():
             if not agent.state.is_alive:
                 continue
-            agent.temperament.mutate(rate=0.005, rng=self.rng)
-            agent.needs.decay(rate=0.003)
-            if agent.state.wealth > 100:
-                agent.needs.satisfy(autonomy=0.01, competence=0.005)
-            if len(agent.social.relationships) > 3:
-                agent.needs.satisfy(belonging=0.01)
-            n_keep = 0
-            for em in agent.emotional_memories:
-                em.decay(rate=0.002)
-                if em.intensity > 0.01:
-                    agent.emotional_memories[n_keep] = em
-                    n_keep += 1
-            if n_keep < len(agent.emotional_memories):
-                del agent.emotional_memories[n_keep:]
+            if not getattr(agent, '_temperament_frozen', False):
+                agent.temperament.mutate(rate=0.005, rng=self.rng)
+            if not getattr(agent, '_needs_frozen', False):
+                agent.needs.decay(rate=0.003)
+                if agent.state.wealth > 100:
+                    agent.needs.satisfy(autonomy=0.01, competence=0.005)
+                if len(agent.social.relationships) > 3:
+                    agent.needs.satisfy(belonging=0.01)
+            if not getattr(agent, '_emotions_frozen', False):
+                n_keep = 0
+                for em in agent.emotional_memories:
+                    em.decay(rate=0.002)
+                    if em.intensity > 0.01:
+                        agent.emotional_memories[n_keep] = em
+                        n_keep += 1
+                if n_keep < len(agent.emotional_memories):
+                    del agent.emotional_memories[n_keep:]
 
         # --- Registrar eventos emocionais para life_events recentes ---
         for agent in self.agents.values():
