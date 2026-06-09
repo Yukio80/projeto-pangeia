@@ -109,6 +109,8 @@ class Simulation:
                 0, agent.agent_id, agent.state.name,
                 agent.state.agent_class, agent.state.territory_id or 0,
                 personality=agent.personality.as_dict(),
+                archetype=agent.archetype.name if agent.archetype else "none",
+                contradictions=agent._contradictions,
             )
             for j in range(min(3, len(agent_ids) // 10)):
                 other_id = self.rng.choice([x for x in agent_ids if x != aid])
@@ -213,6 +215,30 @@ class Simulation:
                     entry.last_interaction += 1
                     entry.trust = rel.trust * 0.7 + entry.trust * 0.3
                     entry.respect = max(entry.respect, agent.state.influence * 0.3)
+
+        # --- Personalidade: evolução lenta e necessidades ---
+        for agent in self.agents.values():
+            if not agent.state.is_alive:
+                continue
+            agent.temperament.mutate(rate=0.005, rng=self.rng)
+            agent.needs.decay(rate=0.003)
+            if agent.state.wealth > 100:
+                agent.needs.satisfy(autonomy=0.01, competence=0.005)
+            if len(agent.social.relationships) > 3:
+                agent.needs.satisfy(belonging=0.01)
+            for em in agent.emotional_memories:
+                em.decay(rate=0.002)
+
+        # --- Registrar eventos emocionais para life_events recentes ---
+        for agent in self.agents.values():
+            if not agent.state.is_alive:
+                continue
+            for ev in agent.state.life_events[-3:]:
+                agent.record_emotional_event(
+                    tick=ev.tick,
+                    event_type=ev.event_type,
+                    description=ev.description,
+                )
 
         self._age_agents()
         self._record_world_events()

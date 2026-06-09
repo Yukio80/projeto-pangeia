@@ -7,7 +7,16 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from pangeia.core.memory import Memory
-from pangeia.core.psychology import Personality, EmotionalState, Goal
+from pangeia.core.psychology import (
+    Temperament, EmotionalState, Goal,
+    Archetype, ArchetypeType,
+    random_archetype, ARCHETYPE_DEFINITIONS,
+    generate_temperament_with_contradictions,
+    AgentBehaviorModifiers, EmotionalMemory,
+    PsychologicalNeeds, CulturalInfluence,
+    get_emotional_profile,
+    compute_action_bias,
+)
 from pangeia.core.knowledge import KnowledgeBase
 from pangeia.core.social_network import SocialNetwork
 from pangeia.config import SimulationConfig
@@ -186,19 +195,41 @@ class Agent(ABC):
             energy=100.0,
         )
 
-        self.personality = Personality.random(self.rng)
+        # --- Novo sistema de personalidade ---
+        self.temperament = generate_temperament_with_contradictions(self.rng)
+        archetype_type = random_archetype(self.rng)
+        self.archetype: Archetype = ARCHETYPE_DEFINITIONS[archetype_type]
+        self.temperament = self.archetype.apply(self.temperament)
+        self._contradictions = self.temperament.contradictions()
+
+        # Backward compat para código que usa self.personality
+        self._personality_backdoor = self.temperament.as_dict()
+
         self.emotions = EmotionalState()
+        self.behavior_modifiers = AgentBehaviorModifiers()
+        self.emotional_memories: List[EmotionalMemory] = []
+        self.needs = PsychologicalNeeds()
+        self.cultural_influences: List[CulturalInfluence] = []
+
         self.memory = Memory(capacity=config.agent.memory_capacity)
         self.knowledge = KnowledgeBase(max_items=config.agent.max_knowledge_items)
         self.social = SocialNetwork(self.agent_id)
         self.goals: List[Goal] = []
         self.skills: Dict[str, float] = {}
 
+        # Metas do arquétipo
+        for g in self.archetype.preferred_goals:
+            self.add_goal(**g)
+
         self.memory.remember(
             f"I am {self.state.name}, a {agent_class} in the world of Pangeia.",
             memory_type="identity",
             importance=1.0,
         )
+
+    @property
+    def personality(self) -> Temperament:
+        return self.temperament
 
     def _generate_name(self) -> str:
         prefixes = ["Ae", "Be", "Ca", "De", "El", "Fa", "Ga", "He", "Ir", "Ka",
@@ -280,11 +311,81 @@ class Agent(ABC):
         self.goals.sort(key=lambda g: g.priority, reverse=True)
         self.goals = self.goals[:5]
 
+    def record_emotional_event(self, tick: int, event_type: str,
+                                description: str, participants: Optional[List[str]] = None):
+        """Registra um evento com carga emocional."""
+        profile = get_emotional_profile(event_type)
+        if not profile and event_type in ("robbery", "assault", "death", "war",
+                                           "victory", "defeat", "betrayal", "famine",
+                                           "disease", "disaster"):
+            profile = {"fear": 0.5, "sadness": 0.3, "trust": -0.2}
+
+        if not profile:
+            return
+
+        mem = EmotionalMemory(
+            event_id=f"{tick}_{event_type}_{self.agent_id}",
+            tick=tick,
+            event_type=event_type,
+            description=description,
+            participants=participants or [],
+            anger=profile.get("anger", 0),
+            fear=profile.get("fear", 0),
+            sadness=profile.get("sadness", 0),
+            joy=profile.get("joy", 0),
+            trust=profile.get("trust", 0),
+        )
+        self.emotional_memories.append(mem)
+        if len(self.emotional_memories) > 50:
+            self.emotional_memories = self.emotional_memories[-50:]
+
+        # Aplica delta imediato no estado emocional
+        self.emotions.update(
+            delta_happiness=profile.get("happiness", 0) * 0.3,
+            delta_trust=profile.get("trust", 0) * 0.3,
+            delta_anger=profile.get("anger", 0) * 0.3,
+            delta_fear=profile.get("fear", 0) * 0.3,
+            delta_curiosity=profile.get("curiosity", 0) * 0.3,
+            delta_sadness=profile.get("sadness", 0) * 0.3,
+        )
+
+    def add_cultural_influence(self, group_name: str, group_type: str,
+                                values: Optional[Dict[str, float]] = None):
+        """Adiciona ou atualiza influência cultural."""
+        existing = [c for c in self.cultural_influences if c.group_name == group_name]
+        if existing:
+            ci = existing[0]
+            if values:
+                ci.values.update(values)
+        else:
+            self.cultural_influences.append(CulturalInfluence(
+                group_name=group_name,
+                group_type=group_type,
+                values=values or {},
+            ))
+
+    def compute_action_score(self, action: str, tick: int) -> float:
+        """Aplica a fórmula completa de decisão."""
+        return compute_action_bias(
+            action=action,
+            temperament=self.temperament,
+            modifiers=self.behavior_modifiers,
+            emotions=self.emotions,
+            needs=self.needs,
+            tick=tick,
+        )
+
     def summarize(self) -> dict:
         return {
             **self.state.as_dict(),
-            "personality": self.personality.as_dict(),
+            "personality": self.temperament.as_dict(),
+            "archetype": self.archetype.name if self.archetype else "none",
+            "contradictions": self._contradictions,
             "emotions": self.emotions.as_dict(),
+            "needs": self.needs.as_dict(),
+            "behavior_modifiers": self.behavior_modifiers.count(),
+            "emotional_memories": len(self.emotional_memories),
+            "cultural_influences": [c.as_dict() for c in self.cultural_influences],
             "memory": self.memory.summarize(),
             "knowledge": self.knowledge.summarize(),
             "social": self.social.summarize(),

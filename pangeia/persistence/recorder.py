@@ -39,7 +39,9 @@ class AuditRecorder:
 
     def record_agent_created(self, tick: int, agent_id: str, name: str,
                               agent_class: str, territory_id: int,
-                              personality: Optional[dict] = None):
+                              personality: Optional[dict] = None,
+                              archetype: str = "",
+                              contradictions: Optional[List[str]] = None):
         self._emit(Event(
             tick=tick,
             event_type=EventType.AGENT_CREATED,
@@ -51,6 +53,8 @@ class AuditRecorder:
                 "class": agent_class,
                 "territory_id": territory_id,
                 "personality": personality or {},
+                "archetype": archetype,
+                "contradictions": contradictions or [],
             },
         ))
 
