@@ -212,6 +212,18 @@ async def collective_memory_myths():
     return [m.as_dict() for m in sim.collective_memory.get_myths()]
 
 
+@app.get("/collective_memory/volatility")
+async def collective_memory_volatility():
+    sim = get_sim()
+    return sim.collective_memory.volatility(sim.world.state.tick).as_dict()
+
+
+@app.get("/collective_memory/narratives/{narrative_type}")
+async def collective_memory_narratives(narrative_type: str):
+    sim = get_sim()
+    return [m.as_dict() for m in sim.collective_memory.get_memories(narrative_type=narrative_type)]
+
+
 @app.post("/bot/register")
 async def bot_register(name: str, api_endpoint: str, api_key: str,
                        capabilities: str = "[]", version: str = "1.0",

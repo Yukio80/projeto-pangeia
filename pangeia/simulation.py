@@ -209,10 +209,12 @@ class Simulation:
                 agent.state.political_alignment += 0.01
             elif agent.state.wealth < 20:
                 agent.state.political_alignment -= 0.01
-            # Rebeldia geracional — memórias dominantes geram contrapeso político
+            # Rebeldia geracional — ponderada por coorte etária
             rp = self.collective_memory.rebellion_probability
-            if rp > 0.3:
-                rebel_drift = self.rng.uniform(-0.03, 0.03) * rp
+            cohort_bias = self.collective_memory.get_cohort_rebellion_bias(agent.state.age)
+            effective_rp = rp * cohort_bias
+            if effective_rp > 0.3:
+                rebel_drift = self.rng.uniform(-0.03, 0.03) * effective_rp
                 agent.state.political_alignment += rebel_drift
                 agent.state.political_alignment = max(-1.0, min(1.0, agent.state.political_alignment))
 
