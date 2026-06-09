@@ -264,6 +264,7 @@ class TechnologySystem:
                 progress = researcher.state.education_level * 2.0 * self.rng.uniform(0.5, 1.5)
                 discovered = self.research(target.id, progress, researcher.agent_id)
                 if discovered:
+                    target.discovery_tick = sim.world.state.tick
                     researcher.state.add_life_event(
                         sim.world.state.tick, "discovery",
                         f"Discovered {target.name} ({target.era} era)",
