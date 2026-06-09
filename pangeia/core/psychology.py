@@ -641,6 +641,17 @@ EVENT_EMOTIONAL_PROFILES: Dict[str, Dict[str, float]] = {
     "influence": {"joy": 0.4, "happiness": 0.5, "trust": 0.3},
     "moltbook_post": {"joy": 0.3, "happiness": 0.4, "trust": 0.2},
     "moltbook_comment": {"joy": 0.3, "happiness": 0.3, "trust": 0.2},
+    # Eventos do sistema de eventos de Pangeia
+    "economic_crisis": {"fear": 0.7, "sadness": 0.5, "anger": 0.4, "trust": -0.5},
+    "scientific_breakthrough": {"joy": 0.8, "curiosity": 0.7, "trust": 0.4, "happiness": 0.6},
+    "natural_disaster": {"fear": 0.9, "sadness": 0.7, "anger": 0.5, "trust": -0.5},
+    "epidemic": {"fear": 0.8, "sadness": 0.6, "trust": -0.5, "anger": 0.3},
+    "energy_crisis": {"fear": 0.7, "anger": 0.5, "sadness": 0.4, "trust": -0.4},
+    "technological_advance": {"joy": 0.7, "curiosity": 0.8, "trust": 0.3, "happiness": 0.5},
+    "cultural_renaissance": {"joy": 0.8, "curiosity": 0.6, "trust": 0.4, "happiness": 0.7},
+    "event_start": {"fear": 0.2, "curiosity": 0.3, "trust": 0.1},
+    "event_end": {"joy": 0.3, "happiness": 0.2, "trust": 0.2},
+    "religion_founded": {"joy": 0.5, "trust": 0.4, "curiosity": 0.3},
 }
 
 

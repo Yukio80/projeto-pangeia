@@ -22,6 +22,7 @@ class CollectiveMemory:
     religion_id: Optional[str] = None
     faction_id: Optional[str] = None
     citation_count: int = 1  # quantas vezes foi referenciado
+    dominance: float = 0.5  # quão fortemente essa narrativa é imposta/enforçada
 
     def age(self, myth_rate: float = 0.05, fade_rate: float = 0.03):
         """Uma geração se passa. A memória desbota e pode virar mito."""
@@ -54,6 +55,7 @@ class CollectiveMemory:
             "emotional_charge": {k: round(v, 3) for k, v in self.emotional_charge.items()},
             "generations_passed": self.generations_passed,
             "importance": round(self.importance, 3),
+            "dominance": round(self.dominance, 3),
             "territory_id": self.territory_id,
             "religion_id": self.religion_id,
             "faction_id": self.faction_id,
@@ -89,9 +91,14 @@ class CollectiveMemorySystem:
     - A carga emocional influencia decisões do grupo
     """
 
-    def __init__(self):
+    def __init__(self, rng: Optional[random.Random] = None):
         self.memories: List[CollectiveMemory] = []
         self._event_counter: int = 0
+        self.rebellion_probability: float = 0.0
+        self._parent_dominance_history: List[float] = []
+        self._threshold: float = 0.6
+        self._rebellion_increment: float = 0.15
+        self.rng = rng or random.Random()
 
     def add_memory(
         self,
@@ -104,9 +111,15 @@ class CollectiveMemorySystem:
         religion_id: Optional[str] = None,
         faction_id: Optional[str] = None,
         importance: float = 0.5,
+        dominance: Optional[float] = None,
     ) -> CollectiveMemory:
         self._event_counter += 1
         event_id = f"CM{self._event_counter:05d}"
+        if dominance is None:
+            total_charge = sum(abs(v) for v in (emotional_charge or {}).values())
+            base = min(1.0, 0.3 + total_charge * 0.12)
+            significance = min(1.0, importance * 1.5)
+            dominance = min(1.0, base * 0.5 + significance * 0.5 + self.rng.uniform(-0.1, 0.1))
         mem = CollectiveMemory(
             event_id=event_id,
             tick=tick,
@@ -115,6 +128,7 @@ class CollectiveMemorySystem:
             narrative=narrative,
             emotional_charge=emotional_charge or {"fear": 0.3, "sadness": 0.2},
             importance=importance,
+            dominance=dominance,
             territory_id=territory_id,
             religion_id=religion_id,
             faction_id=faction_id,
@@ -124,11 +138,47 @@ class CollectiveMemorySystem:
 
     def step(self, tick: int, generations: int = 1):
         """Avança o tempo para todas as memórias. Gerações podem ser
-        passadas mais rápido (ex: 1 geração = N ticks)."""
+        passadas mais rápido (ex: 1 geração = N ticks).
+
+        A cada geração, calcula a dominância média das memórias da
+        geração anterior. Se ultrapassar o limiar, a probabilidade de
+        rebelião da nova geração aumenta.
+        """
         for _ in range(generations):
+            # Calcula dominância média ANTES de envelhecer
+            if self.memories:
+                avg_dominance = sum(m.dominance for m in self.memories) / len(self.memories)
+            else:
+                avg_dominance = 0.0
+            self._parent_dominance_history.append(avg_dominance)
+
+            # Se a geração anterior foi muito dominante, próxima geração se rebela
+            if self._parent_dominance_history:
+                parent_dominance = self._parent_dominance_history[-1]
+                if parent_dominance > self._threshold:
+                    self.rebellion_probability = min(
+                        1.0,
+                        self.rebellion_probability + self._rebellion_increment,
+                    )
+
+            # Envelhece memórias
             for mem in self.memories:
                 mem.age()
+
         self.memories = [m for m in self.memories if m.importance > 0.01]
+
+        # Se a rebelião aconteceu, reseta parcialmente
+        if self.rebellion_probability > 0.5 and self.rng.random() < self.rebellion_probability * 0.3:
+            self._do_rebellion()
+
+    def _do_rebellion(self):
+        """Uma rebelião cultural: narrativas dominantes são desafiadas,
+        novas memórias suprimem as antigas."""
+        for m in self.memories:
+            if m.dominance > self._threshold:
+                m.importance *= 0.5
+                m.dominance *= 0.4
+        self.rebellion_probability = max(0.0, self.rebellion_probability - 0.3)
 
     def get_memories(
         self,
@@ -202,10 +252,16 @@ class CollectiveMemorySystem:
     def summarize(self) -> dict:
         total = len(self.memories)
         myths = len(self.get_myths())
+        avg_dominance = (
+            sum(m.dominance for m in self.memories) / max(1, total)
+        )
         return {
             "total_memories": total,
             "myths": myths,
             "active_memories": total - myths,
+            "avg_dominance": round(avg_dominance, 3),
+            "rebellion_probability": round(self.rebellion_probability, 3),
+            "dominance_history": [round(d, 3) for d in self._parent_dominance_history[-10:]],
             "most_influential": [m.as_dict() for m in self.most_influential(5)],
             "average_generations": (
                 sum(m.generations_passed for m in self.memories) / max(1, total)

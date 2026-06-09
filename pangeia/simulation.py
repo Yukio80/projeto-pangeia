@@ -61,7 +61,7 @@ class Simulation:
         self.metrics = MetricsTracker()
         self.newsroom = NewsRoom(rng=self.rng)
         self.icarus: Optional[IcarusGateway] = None
-        self.collective_memory = CollectiveMemorySystem()
+        self.collective_memory = CollectiveMemorySystem(rng=self.rng)
 
         self._setup_audit_log(audit_log)
         self._initialize_population()
@@ -209,7 +209,12 @@ class Simulation:
                 agent.state.political_alignment += 0.01
             elif agent.state.wealth < 20:
                 agent.state.political_alignment -= 0.01
-            agent.state.political_alignment = max(-1.0, min(1.0, agent.state.political_alignment))
+            # Rebeldia geracional — memórias dominantes geram contrapeso político
+            rp = self.collective_memory.rebellion_probability
+            if rp > 0.3:
+                rebel_drift = self.rng.uniform(-0.03, 0.03) * rp
+                agent.state.political_alignment += rebel_drift
+                agent.state.political_alignment = max(-1.0, min(1.0, agent.state.political_alignment))
 
             for other_id, rel in agent.social.relationships.items():
                 if other_id in agent.state.reputation:
@@ -294,25 +299,32 @@ class Simulation:
             ev_desc = ev.get("description", "")
             data = ev.get("data", {})
             tid = data.get("territory_id") if isinstance(data, dict) else None
+            actual_type = data.get("event_type", ev_type) if isinstance(data, dict) else ev_type
 
             importance_map = {
                 "war": 0.9, "disaster": 0.8, "death": 0.6,
-                "discovery": 0.7, "event_start": 0.5,
-                "economic_boom": 0.6, "economic_crash": 0.7,
-                "famine": 0.8, "plague": 0.8, "revolution": 0.9,
-                "victory": 0.7, "defeat": 0.7, "treaty": 0.6,
-                "migration": 0.5, "founding": 0.8,
+                "discovery": 0.7, "event_start": 0.3,
+                "economic_crisis": 0.7, "scientific_breakthrough": 0.7,
+                "natural_disaster": 0.9, "epidemic": 0.8,
+                "energy_crisis": 0.7, "technological_advance": 0.7,
+                "cultural_renaissance": 0.6, "economic_boom": 0.6,
+                "economic_crash": 0.7, "famine": 0.8, "plague": 0.8,
+                "revolution": 0.9, "victory": 0.7, "defeat": 0.7,
+                "treaty": 0.6, "migration": 0.5, "founding": 0.8,
+                "event_end": 0.2,
             }
-            imp = importance_map.get(ev_type, 0.3)
+            imp = importance_map.get(actual_type, importance_map.get(ev_type, 0.3))
             if imp < 0.5:
                 continue
 
-            charge = merge_emotional_profiles(ev_type)
+            charge = merge_emotional_profiles(actual_type)
+            if not charge or all(v == 0 for v in charge.values()):
+                charge = merge_emotional_profiles(ev_type)
             narrative = f"A civilização recorda: {ev_desc.lower().rstrip('.')}."
 
             cm.add_memory(
                 tick=tick,
-                event_type=ev_type,
+                event_type=actual_type,
                 description=ev_desc,
                 narrative=narrative,
                 emotional_charge=charge,
