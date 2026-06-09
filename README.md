@@ -578,22 +578,22 @@ Acesse `http://localhost:8000/dashboard` para um painel HTML interativo com feed
 
 ## Performance
 
-Benchmark com 300 agentes, 100 ticks:
+Benchmarks atuais (versão otimizada com 1000 agentes):
 
-| Configuração | ticks/s | Observação |
-|-------------|---------|------------|
-| Baseline | 23.7 | Sem otimizações |
-| Após caches de perceive | ~21.0 | Cache de economy/governance summary |
-| Após fix culture O(n²) | 21.0 → 14.2 | Curva plana até tick 500 |
-| Com NewsRoom | ~10-14 | Overhead aceitável de ~25% |
+| População | ticks/s | Observação |
+|-----------|---------|------------|
+| 100 | 38.0 | Otimizado |
+| 300 | 11.0 | Acima da meta (>10 t/s) |
+| 500 | 5.6 | — |
+| 1000 | 2.4 | Gargalo: objeto Agent (overhead Python) |
 
-### Principais otimizações
+### Principais Otimizações Recentes (2026)
 
-- **`rng.sample()` em vez de `rng.shuffle()`** no socializing: eliminou 295k chamadas de `randbelow` por tick
-- **Cache de perceive**: `economy.summary()` e `governance.summary()` computados uma vez por tick → 2.1x mais rápido
-- **Cache de researchable**: eliminou 8043 chamadas de `can_research()` por tick
-- **Deque para memória**: crescimento limitado em vez de linear
-- **Culture sampling**: K=5-10 targets aleatórios em vez de iterar todos os agentes (eliminou 10x degradação entre tick 10 e 100)
+- **`_process_action` dict dispatch (42x mais rápido)**: Substituiu `if/elif` por dispatch O(1).
+- **Moltbook O(k) sampling**: Amostragem K=10/20 em vez de iterar sobre toda a população (O(n²)).
+- **Redução de syscalls**: Removido `time.time()` de `memory.remember()` e `broadcast` targets reduzido (50 -> 20/30).
+- **Personality/Evolution**: Evolução (mutate/decay) a cada 2 ticks; trim de memória emocional a cada 5 ticks.
+- **Cache de percepção**: Caches de `economy.summary()` e `governance.summary()` reduziram drasticamente recomputação O(n²).
 
 ### Resultados experimentais
 
