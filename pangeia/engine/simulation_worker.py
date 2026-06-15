@@ -202,6 +202,11 @@ def _run_worker(
         if tick - last_snapshot_tick >= SNAPSHOT_INTERVAL:
             snapshot = _build_state_snapshot(sim)
             store.save_snapshot(tick, snapshot)
+            _put_nb(status_queue, {
+                "type": "state_snapshot",
+                "data": snapshot,
+                "real_time": time.time(),
+            })
             last_snapshot_tick = tick
 
     while True:

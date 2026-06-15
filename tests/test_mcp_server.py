@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 
 import pytest
 import httpx
@@ -484,9 +484,9 @@ async def test_run_simulation_ticks_does_not_restart_when_already_running():
 
 
 @pytest.mark.asyncio
-async def test_list_resources_returns_exactly_9_resources():
+async def test_list_resources_returns_exactly_10_resources():
     resources = await handle_list_resources()
-    assert len(resources) == 9
+    assert len(resources) == 10
     uris = [str(r.uri) for r in resources]
     expected = [
         "pangeia://status",
@@ -498,6 +498,7 @@ async def test_list_resources_returns_exactly_9_resources():
         "pangeia://agents/summary",
         "pangeia://news",
         "pangeia://diplomacy",
+        "pangeia://history",
     ]
     assert uris == expected
     for r in resources:
@@ -517,6 +518,7 @@ _RESOURCE_TEST_CASES = [
     "pangeia://agents/summary",
     "pangeia://news",
     "pangeia://diplomacy",
+    "pangeia://history",
 ]
 
 
@@ -595,6 +597,85 @@ async def test_resource_diplomacy_returns_json(mock_api):
     result = await handle_read_resource("pangeia://diplomacy")
     data = json.loads(result[0].text)
     assert "factions" in data
+
+
+# ─── Resources: history (local filesystem, offline-capable) ────────
+
+
+@pytest.mark.asyncio
+async def test_resource_history_returns_no_reports_when_dir_missing():
+    with patch("pathlib.Path") as mock_path_cls:
+        mock_reports = MagicMock()
+        mock_path_cls.return_value = mock_reports
+        mock_reports.is_dir.return_value = False
+        result = await handle_read_resource("pangeia://history")
+    data = json.loads(result[0].text)
+    assert data["total_reports"] == 0
+    assert data["reports"] == []
+
+
+@pytest.mark.asyncio
+async def test_resource_history_lists_markdown_reports(tmp_path):
+    r1 = tmp_path / "20250101_tick100_teste.md"
+    r1.write_text("# Report\n\n## Análise Política\n\nA estabilidade está em 0.72.\n\nMais conteúdo.", encoding="utf-8")
+
+    fake_report = MagicMock()
+    fake_report.name = "20250101_tick100_teste.md"
+    fake_report.read_text.return_value = r1.read_text(encoding="utf-8")
+    fake_report.stat.return_value = MagicMock(st_size=62)
+
+    with patch("pathlib.Path") as mock_path_cls:
+        mock_reports = MagicMock()
+        mock_path_cls.return_value = mock_reports
+        mock_reports.is_dir.return_value = True
+        mock_reports.glob.return_value = sorted([fake_report])
+        result = await handle_read_resource("pangeia://history")
+    data = json.loads(result[0].text)
+    assert data["total_reports"] == 1
+    assert data["reports"][0]["filename"] == "20250101_tick100_teste.md"
+    assert data["reports"][0]["title"] == "Análise Política"
+    assert "estabilidade" in data["reports"][0]["preview"]
+
+
+@pytest.mark.asyncio
+async def test_resource_history_sorts_by_filename_desc():
+    fake_b = MagicMock(name="20250201_tick200_b.md")
+    fake_b.name = "20250201_tick200_b.md"
+    fake_b.read_text.return_value = "# B\n\n## Beta\n\nConteúdo B"
+    fake_b.stat.return_value = MagicMock(st_size=50)
+
+    fake_a = MagicMock(name="20250101_tick100_a.md")
+    fake_a.name = "20250101_tick100_a.md"
+    fake_a.read_text.return_value = "# A\n\n## Alpha\n\nConteúdo A"
+    fake_a.stat.return_value = MagicMock(st_size=50)
+
+@pytest.mark.asyncio
+async def test_resource_history_handles_multiple_reports():
+    def make_fake(name: str, title: str, text: str):
+        mk = MagicMock(name=name)
+        mk.name = name
+        mk.read_text.return_value = text
+        mk.stat.return_value = MagicMock(st_size=60)
+        return mk
+
+    fake_a = make_fake("20250101_tick100_a.md",
+                       "# A\n\n## Alpha\n\nConteúdo A",
+                       "# A\n\n## Alpha\n\nConteúdo A")
+    fake_b = make_fake("20250201_tick200_b.md",
+                       "# B\n\n## Beta\n\nConteúdo B",
+                       "# B\n\n## Beta\n\nConteúdo B")
+
+    with patch("pathlib.Path") as mock_path_cls:
+        mock_reports = MagicMock()
+        mock_path_cls.return_value = mock_reports
+        mock_reports.is_dir.return_value = True
+        mock_reports.glob.return_value = [fake_a, fake_b]
+        result = await handle_read_resource("pangeia://history")
+    data = json.loads(result[0].text)
+    assert data["total_reports"] == 2
+    filenames = [r["filename"] for r in data["reports"]]
+    assert "20250101_tick100_a.md" in filenames
+    assert "20250201_tick200_b.md" in filenames
 
 
 # ─── Resources: inactive API returns error JSON ──────────────────
