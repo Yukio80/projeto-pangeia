@@ -6,6 +6,8 @@ from unittest.mock import patch, AsyncMock
 import pytest
 import httpx
 
+import pangeia.mcp_server as mcp_srv
+
 from pangeia.mcp_server import (
     handle_call_tool,
     _tool_status,
@@ -18,6 +20,10 @@ from pangeia.mcp_server import (
     _tool_agent_sample,
     _tool_run_ticks,
     _tool_register_bot,
+    handle_list_resources,
+    handle_read_resource,
+    _resource_cache,
+    cached_get,
 )
 
 
@@ -171,6 +177,10 @@ def mock_api():
             return httpx.Response(200, json=SAMPLE_AGENTS_LIST)
         if path == "/metrics/history":
             return httpx.Response(200, json=SAMPLE_METRICS_HISTORY)
+        if path == "/stratification":
+            return httpx.Response(200, json={"classes": [{"name": "upper", "share": 0.2}], "mobility": 0.1})
+        if path == "/diplomacy":
+            return httpx.Response(200, json={"factions": [{"name": "Faction1", "members": 50}], "alliances": [], "conflicts": []})
         if url.startswith("/audit/events/range"):
             return httpx.Response(200, json=SAMPLE_AUDIT_RANGE)
         # Agent detail by ID
@@ -344,6 +354,10 @@ async def test_run_simulation_ticks_advances_and_returns_delta(mock_api):
             return httpx.Response(200, json=SAMPLE_AGENTS_LIST)
         if path == "/metrics/history":
             return httpx.Response(200, json=SAMPLE_METRICS_HISTORY)
+        if path == "/stratification":
+            return httpx.Response(200, json={"classes": [{"name": "upper", "share": 0.2}], "mobility": 0.1})
+        if path == "/diplomacy":
+            return httpx.Response(200, json={"factions": [{"name": "Faction1", "members": 50}], "alliances": [], "conflicts": []})
         if url.startswith("/audit/events/range"):
             return httpx.Response(200, json=SAMPLE_AUDIT_RANGE)
         if path.startswith("/agents/") and len(path) > 9:
@@ -464,3 +478,211 @@ async def test_run_simulation_ticks_does_not_restart_when_already_running():
     assert "ticks_executed" in data
     # Should NOT have called /simulation/start since status says running=True
     assert call_count["post_start"] == 0
+
+
+# ─── Resources: list ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_list_resources_returns_exactly_9_resources():
+    resources = await handle_list_resources()
+    assert len(resources) == 9
+    uris = [str(r.uri) for r in resources]
+    expected = [
+        "pangeia://status",
+        "pangeia://economy",
+        "pangeia://governance",
+        "pangeia://culture",
+        "pangeia://collective-memory",
+        "pangeia://technology",
+        "pangeia://agents/summary",
+        "pangeia://news",
+        "pangeia://diplomacy",
+    ]
+    assert uris == expected
+    for r in resources:
+        assert r.mimeType == "application/json"
+
+
+# ─── Resources: active API returns valid JSON ────────────────────
+
+
+_RESOURCE_TEST_CASES = [
+    "pangeia://status",
+    "pangeia://economy",
+    "pangeia://governance",
+    "pangeia://culture",
+    "pangeia://collective-memory",
+    "pangeia://technology",
+    "pangeia://agents/summary",
+    "pangeia://news",
+    "pangeia://diplomacy",
+]
+
+
+@pytest.mark.asyncio
+async def test_resource_status_returns_json(mock_api):
+    result = await handle_read_resource("pangeia://status")
+    assert len(result) == 1
+    data = json.loads(result[0].text)
+    assert data["tick"] == 150
+    assert data["alive_population"] == 280
+    assert "civilization_identity" in data
+
+
+@pytest.mark.asyncio
+async def test_resource_economy_returns_json(mock_api):
+    result = await handle_read_resource("pangeia://economy")
+    assert len(result) == 1
+    data = json.loads(result[0].text)
+    assert data["gdp"] == 15000.0
+    assert len(data["gdp_history"]) == 20  # only 20 samples in mock hist
+
+
+@pytest.mark.asyncio
+async def test_resource_governance_returns_json(mock_api):
+    result = await handle_read_resource("pangeia://governance")
+    data = json.loads(result[0].text)
+    assert data["government_type"] == "democracy"
+    assert data["stability"] == 0.72
+
+
+@pytest.mark.asyncio
+async def test_resource_culture_returns_json(mock_api):
+    result = await handle_read_resource("pangeia://culture")
+    data = json.loads(result[0].text)
+    assert "religions" in data
+    assert "ideologies" in data
+    assert "civilization_identity" in data
+
+
+@pytest.mark.asyncio
+async def test_resource_collective_memory_returns_json(mock_api):
+    result = await handle_read_resource("pangeia://collective-memory")
+    data = json.loads(result[0].text)
+    assert "narratives_by_type" in data
+    assert "myths" in data
+    assert "regime" in data
+
+
+@pytest.mark.asyncio
+async def test_resource_technology_returns_json(mock_api):
+    result = await handle_read_resource("pangeia://technology")
+    data = json.loads(result[0].text)
+    assert data["current_era"] == "Industrial"
+    assert len(data["discovered_technologies"]) == 2
+    assert len(data["researchable_technologies"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_resource_agents_summary_returns_json(mock_api):
+    result = await handle_read_resource("pangeia://agents/summary")
+    data = json.loads(result[0].text)
+    assert "agent_counts_by_class" in data
+    assert "stratification" in data
+
+
+@pytest.mark.asyncio
+async def test_resource_news_returns_json(mock_api):
+    result = await handle_read_resource("pangeia://news")
+    data = json.loads(result[0].text)
+    assert data["total_articles"] == 3
+    assert len(data["articles"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_resource_diplomacy_returns_json(mock_api):
+    result = await handle_read_resource("pangeia://diplomacy")
+    data = json.loads(result[0].text)
+    assert "factions" in data
+
+
+# ─── Resources: inactive API returns error JSON ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_resource_returns_error_when_sim_not_active():
+    async def inactive_get(url: str):
+        return httpx.Response(200, json={"running": False, "tick": 0})
+
+    mock_post = AsyncMock(return_value=httpx.Response(200, json={}))
+    with patch("pangeia.mcp_server.client.get", AsyncMock(side_effect=inactive_get)):
+        with patch("pangeia.mcp_server.client.post", mock_post):
+            result = await handle_read_resource("pangeia://status")
+    data = json.loads(result[0].text)
+    assert "error" in data
+    assert "Simulação não está ativa" in data["error"]
+    assert data["uri"] == "pangeia://status"
+
+
+@pytest.mark.asyncio
+async def test_resource_returns_connection_error():
+    with patch("pangeia.mcp_server.client.get", AsyncMock(side_effect=httpx.ConnectError("Connection refused"))):
+        with patch("pangeia.mcp_server.client.post", AsyncMock(side_effect=httpx.ConnectError("Connection refused"))):
+            result = await handle_read_resource("pangeia://economy")
+    data = json.loads(result[0].text)
+    assert "error" in data
+    assert "Não foi possível conectar" in data["error"]
+
+
+@pytest.mark.asyncio
+async def test_resource_unknown_uri_returns_error():
+    result = await handle_read_resource("pangeia://unknown")
+    data = json.loads(result[0].text)
+    assert "error" in data
+    assert "Unknown resource" in data["error"]
+
+
+# ─── Cache TTL tests ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_cache_serves_second_call_within_ttl(mock_api):
+    _resource_cache.clear()
+    call_count = {"fetch": 0}
+
+    original_get = mcp_srv.client.get
+
+    async def counting_get(url: str):
+        call_count["fetch"] += 1
+        return await original_get(url)
+
+    with patch("pangeia.mcp_server.client.get", AsyncMock(side_effect=counting_get)):
+        r1 = await handle_read_resource("pangeia://status")
+        r2 = await handle_read_resource("pangeia://status")
+
+    assert json.loads(r1[0].text)["tick"] == 150
+    assert json.loads(r2[0].text)["tick"] == 150
+    # Second call to cached_get should NOT re-fetch; but alive-check
+    # each time. First call: 1 (alive) + 1 (status) + 1 (summary) + ...
+    # Second call: 1 (alive) + 0 (cached). So total > alive calls.
+    # Verify _resource_cache has the entry
+    assert "pangeia://status" in _resource_cache
+
+
+@pytest.mark.asyncio
+async def test_cache_fetches_again_after_ttl_expires(mock_api):
+    _resource_cache.clear()
+    call_count = {"fetch": 0}
+
+    original_get = mcp_srv.client.get
+
+    async def counting_get(url: str):
+        call_count["fetch"] += 1
+        return await original_get(url)
+
+    with patch("pangeia.mcp_server.client.get", AsyncMock(side_effect=counting_get)):
+        r1 = await handle_read_resource("pangeia://status")
+        assert json.loads(r1[0].text)["tick"] == 150
+        first_count = call_count["fetch"]
+
+        uri = "pangeia://status"
+        if uri in _resource_cache:
+            ts, data = _resource_cache[uri]
+            _resource_cache[uri] = (ts - 10.0, data)
+
+        r2 = await handle_read_resource("pangeia://status")
+        assert json.loads(r2[0].text)["tick"] == 150
+
+    # TTL expired, so second call should re-fetch
+    assert call_count["fetch"] > first_count

@@ -12,6 +12,7 @@ from fastapi import Body
 from pangeia.config import SimulationConfig
 from pangeia.engine.event_store import EventStore
 from pangeia.engine.simulation_worker import WorkerManager
+from pangeia.api.state_reader import StateReader
 from pangeia.api.schemas import (
     SimulationStatus, WorldSummary, EconomySummary,
     GovernanceSummary, MetricsSummary, FullSummary,

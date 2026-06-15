@@ -5,7 +5,18 @@
       "args": ["pangeia/mcp_server.py"],
       "env": {
         "PANGEIA_API_URL": "http://localhost:8000"
-      }
+      },
+      "resources": [
+        "pangeia://status",
+        "pangeia://economy",
+        "pangeia://governance",
+        "pangeia://culture",
+        "pangeia://collective-memory",
+        "pangeia://technology",
+        "pangeia://agents/summary",
+        "pangeia://news",
+        "pangeia://diplomacy"
+      ]
     }
   }
 }
