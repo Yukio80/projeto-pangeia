@@ -663,6 +663,81 @@ CREATE TABLE IF NOT EXISTS pangeia_events (
 
 ---
 
+## MCP Server
+
+Pangeia expõe o motor da simulação como **ferramentas MCP** (Model Context Protocol),
+consumíveis por agentes de IA como Claude Desktop, GPT, ou qualquer cliente MCP.
+
+### Arquitetura
+
+```
+┌──────────────────────┐       stdio        ┌──────────────────────┐
+│   Claude Desktop /   │ ◄───────/───────── │   pangeia/mcp_server.py  │
+│   Cliente MCP        │                    │   (MCP → HTTP proxy)  │
+│                      │                    │            │          │
+│                      │                    │     HTTP interno      │
+│                      │                    │            │          │
+│                      │                    │  ┌─────────▼────────┐ │
+│                      │                    │  │  FastAPI Server   │ │
+│                      │                    │  │  localhost:8000   │ │
+│                      │                    │  └──────────────────┘ │
+└──────────────────────┘                    └──────────────────────┘
+```
+
+### Ferramentas disponíveis
+
+| Ferramenta | Descrição |
+|------------|-----------|
+| `get_simulation_status` | Tick, população, GDP, estabilidade, era, regime histórico, identidade |
+| `get_economy_snapshot` | GDP, inflação, desemprego, empresas, distribuição, salário médio |
+| `get_governance_state` | Leis, estabilidade, eleições, tax_rate |
+| `get_culture_and_ideology` | Religiões, ideologias, 6 dimensões de identidade, memes |
+| `get_collective_memory` | Narrativas por tipo, mitos, volatilidade, regime |
+| `get_technology_tree` | Tecnologias descobertas, era, próximas pesquisas |
+| `get_news_feed` | Últimas 10 notícias |
+| `get_agent_sample` | Amostra de agentes com personalidade, necessidades, riqueza |
+| `run_simulation_ticks` | Avança N ticks e retorna delta de estado |
+| `register_external_bot` | Registra bot externo via PAP Protocol |
+
+### Configuração para Claude Desktop
+
+Adicione ao seu `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "pangeia": {
+      "command": "python",
+      "args": ["pangeia/mcp_server.py"],
+      "env": {
+        "PANGEIA_API_URL": "http://localhost:8000"
+      }
+    }
+  }
+}
+```
+
+Ou use o arquivo `pangeia_mcp_config.json` já incluído no projeto.
+
+### Uso direto
+
+```bash
+# O servidor MCP usa protocolo stdio (padrão MCP)
+python pangeia/mcp_server.py
+
+# Configure a URL da API (opcional, padrão http://localhost:8000)
+PANGEIA_API_URL=http://localhost:8000 python pangeia/mcp_server.py
+```
+
+### Importante
+
+- O MCP Server **não modifica** o motor da simulação — é apenas um adaptador HTTP → MCP.
+- A API FastAPI (`python main.py`) **deve estar rodando** para o MCP funcionar.
+- Se a simulação estiver parada, use `run_simulation_ticks` para iniciá-la.
+- Timeout por chamada: 30 segundos.
+
+---
+
 ## Extending
 
 ### Criar uma nova classe de agente
