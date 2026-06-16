@@ -484,9 +484,9 @@ async def test_run_simulation_ticks_does_not_restart_when_already_running():
 
 
 @pytest.mark.asyncio
-async def test_list_resources_returns_exactly_10_resources():
+async def test_list_resources_returns_exactly_11_resources():
     resources = await handle_list_resources()
-    assert len(resources) == 10
+    assert len(resources) == 11
     uris = [str(r.uri) for r in resources]
     expected = [
         "pangeia://status",
@@ -499,6 +499,7 @@ async def test_list_resources_returns_exactly_10_resources():
         "pangeia://news",
         "pangeia://diplomacy",
         "pangeia://history",
+        "pangeia://snapshots",
     ]
     assert uris == expected
     for r in resources:

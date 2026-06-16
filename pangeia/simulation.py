@@ -162,7 +162,7 @@ class Simulation:
         random.seed(self.config.world.seed)
         self.rng = random.Random(self.config.world.seed)
 
-        self.world = World(self.config)
+        self.world = World(self.config, rng=self.rng)
         self.communication = CommunicationSystem()
         self.agents: Dict[str, Agent] = {}
 
@@ -213,14 +213,16 @@ class Simulation:
     def _initialize_population(self):
         n = self.config.world.initial_population
         class_distribution = {
-            "citizen": 0.45,
-            "entrepreneur": 0.14,
-            "researcher": 0.09,
+            "citizen": 0.33,
+            "entrepreneur": 0.13,
+            "researcher": 0.08,
             "governor": 0.04,
             "journalist": 0.06,
             "military": 0.07,
             "philosopher": 0.05,
             "moltbook": 0.10,
+            "teacher": 0.07,
+            "conservative": 0.07,
         }
 
         classes = list(class_distribution.keys())
@@ -289,6 +291,8 @@ class Simulation:
             "philosopher": {"influence": 0.6, "ideology": "progressive",  "charisma": 0.4},
             "researcher":  {"influence": 0.4, "ideology": "progressive",  "charisma": 0.3},
             "military":    {"influence": 0.5, "ideology": "conservative", "charisma": 0.6},
+            "teacher":     {"influence": 0.5, "ideology": "neutral",      "charisma": 0.6},
+            "conservative":{"influence": 0.5, "ideology": "conservative", "charisma": 0.4},
         }
         narrative_map = {
             "governor":    "foundational",
@@ -296,6 +300,8 @@ class Simulation:
             "philosopher": "reformist",
             "researcher":  "reformist",
             "military":    "foundational",
+            "teacher":     "reformist",
+            "conservative":"foundational",
         }
         for agent in self.agents.values():
             if not agent.state.is_alive:
@@ -398,6 +404,7 @@ class Simulation:
         self.meme_pool.spread(self.agents)
         self.religion_system.step(self.agents)
         self.ideology_system.step(self.agents, tick)
+        self.world.ideology_manager.tick(self.agents, tick)
         self.technology.step(self)
         self.diplomacy.step(self)
         self.stratification.assign_classes(self.agents)
@@ -671,6 +678,7 @@ class Simulation:
                 "memes": self.meme_pool.summarize(),
                 "religion": self.religion_system.summary(),
                 "ideologies": self.ideology_system.summary(),
+                "emergent_ideologies": self.world.ideology_manager.to_dict(),
             },
             "technology": self.technology.summary(),
             "diplomacy": self.diplomacy.summary(),

@@ -231,6 +231,38 @@ class NewsListResponse(BaseModel):
     articles: List[NewsArticleResponse]
 
 
+# ─── Snapshots ──────────────────────────────────────────────
+
+class SnapshotResponse(BaseModel):
+    tick: int
+    path: str
+    size_bytes: int
+    timestamp: str
+    label: str
+
+
+class SnapshotMeta(BaseModel):
+    tick: int
+    path: str
+    size_bytes: int
+    timestamp: str
+    label: str
+    filename: str
+
+
+class TimelinePoint(BaseModel):
+    tick: int
+    value: float | None
+
+
+class TimelineResponse(BaseModel):
+    metric: str
+    from_tick: int
+    to_tick: int
+    points: list[TimelinePoint]
+    snapshot_count: int
+
+
 # ─── Ablation ───────────────────────────────────────────────
 
 class AblationRunRequest(BaseModel):

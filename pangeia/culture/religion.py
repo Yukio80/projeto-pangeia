@@ -83,7 +83,7 @@ class ReligiousSystem:
         alive_map = {aid: agents[aid] for aid in alive_ids}
 
         for agent in alive_map.values():
-            if (agent.state.agent_class in ("philosopher", "governor")
+            if (agent.state.agent_class in ("philosopher", "governor", "teacher")
                     and self.rng.random() < 0.02 * agent.state.influence
                     and len(self.religions) < 10):
                 name = self._generate_religion_name()

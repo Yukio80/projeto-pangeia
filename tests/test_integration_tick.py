@@ -82,7 +82,7 @@ def test_narrative_actors_registered(ticked_simulation):
     actors = ticked_simulation.collective_memory.actors
     assert len(actors) > 0, "Narrative actors should be registered"
     classes_found = {a.agent_class for a in actors.values()}
-    assert classes_found.issubset({"governor", "journalist", "philosopher", "researcher", "military"})
+    assert classes_found.issubset({"governor", "journalist", "philosopher", "researcher", "military", "teacher", "conservative"})
 
 
 def test_agent_personality_evolves(ticked_simulation):

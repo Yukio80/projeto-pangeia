@@ -6,6 +6,8 @@ from pangeia.agents.journalist import Journalist
 from pangeia.agents.military import Military
 from pangeia.agents.philosopher import Philosopher
 from pangeia.agents.moltbook import MoltbookAgent
+from pangeia.agents.teacher import Teacher
+from pangeia.agents.conservative import Conservative
 
 AGENT_CLASSES = {
     "citizen": Citizen,
@@ -16,10 +18,13 @@ AGENT_CLASSES = {
     "military": Military,
     "philosopher": Philosopher,
     "moltbook": MoltbookAgent,
+    "teacher": Teacher,
+    "conservative": Conservative,
 }
 
 __all__ = [
     "Citizen", "Entrepreneur", "Researcher", "Governor",
-    "Journalist", "Military", "Philosopher", "MoltbookAgent",
+    "Journalist", "Military", "Philosopher", "MoltbookAgent", "Teacher",
+    "Conservative",
     "AGENT_CLASSES",
 ]

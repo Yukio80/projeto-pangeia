@@ -26,7 +26,7 @@ Motor Python puro — 8 classes de agente, 11 subsistemas
 |--------|-----------|-----------|
 | MCP Server | Python + `mcp` SDK | Adaptador stdio que expõe simulação como tools/resources MCP |
 | API | FastAPI + Uvicorn + WebSocket | 40+ endpoints REST, WebSocket para updates em tempo real, dashboard HTML |
-| Motor | Python puro (0 dependências de engine) | Simulação multiplataforma sem runtime externo |
+| Motor | Python puro (0 dependências de engine) | Simulação multiplataforma sem runtime externo. Inclui ideologias emergentes, lobbying político, e 10 classes de agente |
 | Persistência | In-memory (padrão) ou PostgreSQL | Event store com replay, snapshots a cada 10 ticks |
 | Audit | Event store + snapshot | Log completo de eventos da civilização com replay |
 
@@ -125,8 +125,15 @@ python -m pangeia.analyst \
 
 Em uma simulação com seed 42 e 500 agentes:
 - **Tick 25**: Analista reporta "consolidação e crescimento" — estabilidade 0.721, felicidade 1.0, Era Industrial, representativo.
-- **Tick 172**: Civilização descobre "Digital Ascension" — transferência de consciência para forma digital.
-- **Tick 2413**: Nenhum agente biológico sobreviveu. 500 mortos, 0 vivos. GDP zero. Emprego zero. O Analista classifica como "colapso terminal."
+- **Tick 162-172**: Civilização descobre "Digital Ascension" — transferência de consciência para forma digital. Tentativas de resistência política (Conservatives) e ideológica (ideologias anti-Ascensão) não conseguem se organizar a tempo.
+- **Tick 1916-2413**: Nenhum agente biológico sobreviveu. 500 mortos, 0 vivos. GDP zero. Emprego zero. O Analista classifica como "colapso terminal."
+
+### Descoberta experimental
+
+O padrão se mantém em todas as seeds testadas (42, 123, 777): a civilização colapsa ~1100-1300 ticks após descobrir Ascensão Digital, independente de:
+- Ideologias emergentes anti-Ascensão (formam-se mas sem influência suficiente antes do colapso)
+- Professores elevando educação da população (retardam mortalidade mas não evitam extinção)
+- Conservadores fazendo lobbying político (não aprovam restrições a tempo)
 
 ### Inferência emergente
 
@@ -139,29 +146,39 @@ Sem instrução explícita sobre o que causou a extinção, o Analista inferiu q
 | Subsistema | Função |
 |------------|--------|
 | World | Territórios, recursos naturais, eventos aleatórios |
-| Agents | 8 classes, personalidade 5 camadas, estado emocional, necessidades SDT |
+| Agents | 10 classes, personalidade 5 camadas, estado emocional, necessidades SDT |
 | Economy | Mercado, empresas, PIB, inflação, salários |
 | Governance | Leis, eleições, estabilidade política, taxação |
-| Culture | Religiões, ideologias, memes, crenças |
+| Culture | Religiões, ideologias, ideologias emergentes, memes, crenças |
 | Technology | 26 tecnologias em 6 eras, pesquisa por Researchers |
 | Collective Memory | 4 tipos narrativos, rebeliões, contranarrativas, coortes geracionais |
 | Diplomacy | Facções, alianças, relações interestaduais |
 | Stratification | Classes sociais, mobilidade, desigualdade |
-| Narrative Actors | 5 classes de atores que promovem/atacam narrativas |
+| Narrative Actors | 7 classes de atores que promovem/atacam narrativas |
 | Civilization Identity | 6 dimensões contínuas (0-1) que evoluem organicamente |
 
-### Classes de agente (8)
+### Classes de agente (10)
 
 | Classe | Distribuição | Comportamento |
 |--------|-------------|---------------|
-| Citizen | 45% | Trabalha, consome, socializa, busca emprego |
-| Entrepreneur | 14% | Funda empresas, contrata, inova |
-| Researcher | 9% | Pesquisa, publica descobertas |
+| Citizen | 33% | Trabalha, consome, socializa, busca emprego |
+| Entrepreneur | 13% | Funda empresas, contrata, inova |
+| Researcher | 8% | Pesquisa, publica descobertas |
 | MoltbookAgent | 10% | Posta, comenta, upvota — agente social |
 | Military | 7% | Patrulha, protege recursos |
 | Journalist | 6% | Reporta eventos, ganha influência |
 | Philosopher | 5% | Gera ideias, mitos, reflexões |
 | Governor | 4% | Propõe leis, governa, administra |
+| Teacher | 7% | Educa agentes, aumenta produtividade, funda ideologias |
+| Conservative | 7% | Identifica riscos tecnológicos, faz lobbying por leis restritivas |
+
+### Ideologias Emergentes
+
+Agentes Philosopher, Governor e Teacher podem fundar ideologias espontaneamente. Cada ideologia tem tenentes derivados da personalidade do fundador (curiosidade → stance tecnológica, empatia → stance social). Ideologias se espalham por compatibilidade e decaem com a morte do fundador. Afetam a pesquisa tecnológica via `IdeologyManager.get_technology_modifier()`.
+
+### Lobbying Político
+
+Conservatives monitoram a árvore tecnológica. Quando identificam tecnologias de alto risco (era singularity ou HIGH_RISK_TECHNOLOGIES como Digital Ascension), fazem lobbying junto a Governors para criar `TechRestriction` — leis que reduzem ou bloqueiam a probabilidade de pesquisa. Restrições precisam de lobbying_power > 0.5 para entrar em vigor.
 
 ### Performance
 
@@ -178,18 +195,21 @@ Meta de 10+ t/s para 300 agentes atingida.
 
 ```bash
 python -m pytest -v
-# 182 passed, 0 failed
+# 251 passed, 0 failed
 ```
 
 | Grupo | Testes |
 |-------|--------|
+| Agentes | 22 |
+| Ideologias Emergentes | 24 |
+| Conservative | 23 |
 | MCP Server | 36 |
 | Memória Coletiva | 33 |
 | Psicologia | 28 |
-| Agentes | 22 |
 | Analista | 17 |
 | Integração (tick) | 14 |
 | Árvore de Tecnologia | 11 |
+| Snapshots | 22 |
 | Governança | 6 |
 | Economia | 6 |
 | Cultura | 6 |
@@ -197,8 +217,8 @@ python -m pytest -v
 
 ## Próximos passos
 
-1. **`pangeia://snapshots/{tick}`** — resource MCP para acessar estado completo de qualquer tick específico, permitindo análise forense de colapsos.
-2. **`pangeia://timeline`** — resource MCP com série histórica de métricas-chave para análise longitudinal e detecção de pontos de inflexão.
+1. **Ajustar parâmetros de lobbying** — aumentar lobbying_power base ou reduzir cooldown para Conservatives conseguirem aprovar restrições antes da Ascensão.
+2. **Forçar seed com filósofos de baixa curiosidade** — testar se ideologias anti-Ascensão com fundadores de baixa curiosidade podem efetivamente bloquear a tecnologia.
 3. **Open source MCP Server** como infraestrutura reutilizável para outros projetos de simulação — o padrão de adaptar um motor existente para MCP pode ser extraído como template.
 
 ## Licença e contribuição

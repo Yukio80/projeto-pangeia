@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -27,6 +30,7 @@ from pangeia.api.schemas import (
     AuditEventResponse, AuditStatsResponse, AuditReplayStatusResponse,
     NewsArticleResponse, NewsListResponse,
     AblationRunRequest, AblationRunResponse,
+    SnapshotResponse, SnapshotMeta, TimelinePoint, TimelineResponse,
 )
 
 
@@ -174,7 +178,9 @@ def get_worker() -> WorkerManager:
 
 @app.on_event("startup")
 async def startup():
-    init_simulation()
+    seed = int(os.environ.get("PANGEIA_SEED", "42"))
+    pop = int(os.environ.get("PANGEIA_POPULATION", "500"))
+    init_simulation(seed=seed, population=pop)
     asyncio.create_task(drain_status_task())
 
 
@@ -228,7 +234,14 @@ async def culture():
 
 @app.get("/ideologies")
 async def ideologies():
-    return get_reader().culture().get("ideologies", {})
+    base = get_reader().culture().get("ideologies", {})
+    emergent = get_reader().culture().get("emergent_ideologies", {})
+    return {
+        **base,
+        "emergent": emergent.get("emergent", []),
+        "emergent_count": emergent.get("count", 0),
+        "emergent_followers": emergent.get("total_followers", 0),
+    }
 
 
 @app.get("/diplomacy")
@@ -518,6 +531,161 @@ async def news_detail(article_id: str):
     if result is None:
         raise HTTPException(status_code=404, detail="Article not found")
     return result
+
+
+# ─── Snapshots ───────────────────────────────────────────────
+
+_SNAPSHOT_DIR = Path("snapshots")
+
+_SNAPSHOT_METRIC_PATHS: dict[str, list[str]] = {
+    "gdp": ["economy", "indicators", "gdp"],
+    "population": ["status", "alive_count"],
+    "stability": ["governance", "government", "stability"],
+    "inequality": ["economy", "indicators", "inequality"],
+    "happiness": ["summary", "metrics", "current", "collective_happiness"],
+    "technology_count": ["technology", "discovered"],
+    "volatility": ["collective_memory_volatility", "composite"],
+}
+
+
+def _snapshot_dig(snapshot: dict, path: list[str]) -> Any:
+    for key in path:
+        if isinstance(snapshot, dict):
+            snapshot = snapshot.get(key, {})
+        else:
+            return None
+    return snapshot if snapshot != {} else None
+
+def _collect_full_state_sync() -> dict:
+    """Collect full simulation state from in-process reader/worker (no HTTP)."""
+    try:
+        reader = get_reader()
+    except HTTPException:
+        return {"error": "simulation_not_initialized"}
+    state: dict[str, Any] = {
+        "status": reader.status(),
+        "summary": reader.summary(),
+        "economy": reader.economy(),
+        "economy_history": reader.metrics_history(),
+        "governance": reader.governance(),
+        "culture": reader.culture(),
+        "ideologies": reader.culture().get("ideologies", {}),
+        "civilization": reader.civilization(),
+        "collective_memory": reader.collective_memory(),
+        "collective_memory_myths": reader.collective_memory().get("by_narrative_type", {}).get("myth", []),
+        "collective_memory_volatility": reader.collective_memory().get("volatility", {}),
+        "technology": reader.technology(),
+        "technology_tree": reader.technology_tree(),
+        "diplomacy": reader.diplomacy(),
+        "stratification": reader.stratification(),
+    }
+    try:
+        state["news_latest"] = get_worker().news_latest(n=20)
+    except Exception:
+        state["news_latest"] = {"articles": []}
+    return state
+
+
+@app.post("/snapshot", response_model=SnapshotResponse)
+async def create_snapshot(label: str = ""):
+    _SNAPSHOT_DIR.mkdir(exist_ok=True)
+
+    state = _collect_full_state_sync()
+    state["snapshot_timestamp"] = datetime.now(timezone.utc).isoformat()
+    state["snapshot_label"] = label
+    actual_tick = state.get("status", {}).get("tick", 0) if isinstance(state.get("status"), dict) else 0
+    state["tick"] = actual_tick
+
+    suffix = f"_{label}" if label else ""
+    filename = f"{actual_tick:06d}{suffix}.json"
+    path = _SNAPSHOT_DIR / filename
+    content = json.dumps(state, indent=2, ensure_ascii=False, default=str)
+    path.write_text(content, encoding="utf-8")
+
+    return SnapshotResponse(
+        tick=actual_tick,
+        path=str(path),
+        size_bytes=len(content.encode()),
+        timestamp=state["snapshot_timestamp"],
+        label=label,
+    )
+
+
+@app.get("/snapshots", response_model=list[SnapshotMeta])
+async def list_snapshots():
+    if not _SNAPSHOT_DIR.is_dir():
+        return []
+    files = sorted(_SNAPSHOT_DIR.glob("*.json"), key=lambda f: f.name)
+    result = []
+    for f in files:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        tick = data.get("tick", 0)
+        label = data.get("snapshot_label", "")
+        ts = data.get("snapshot_timestamp", "")
+        result.append(SnapshotMeta(
+            tick=tick,
+            path=str(f),
+            size_bytes=f.stat().st_size,
+            timestamp=ts,
+            label=label,
+            filename=f.name,
+        ))
+    return result
+
+
+@app.get("/snapshot/{tick}")
+async def get_snapshot(tick: int):
+    if not _SNAPSHOT_DIR.is_dir():
+        raise HTTPException(status_code=404, detail=f"No snapshot found for tick {tick}")
+    files = sorted(_SNAPSHOT_DIR.glob(f"{tick:06d}*.json"))
+    if not files:
+        raise HTTPException(status_code=404, detail=f"No snapshot found for tick {tick}")
+    latest = files[-1]
+    try:
+        data = json.loads(latest.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read snapshot: {e}")
+    return data
+
+
+@app.get("/timeline", response_model=TimelineResponse)
+async def get_timeline(metric: str = "gdp", from_tick: int = 0, to_tick: int = 999999):
+    if metric not in _SNAPSHOT_METRIC_PATHS:
+        valid = list(_SNAPSHOT_METRIC_PATHS.keys())
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown metric '{metric}'. Valid: {', '.join(valid)}",
+        )
+    if not _SNAPSHOT_DIR.is_dir():
+        return TimelineResponse(
+            metric=metric, from_tick=from_tick, to_tick=to_tick,
+            points=[], snapshot_count=0,
+        )
+    files = sorted(_SNAPSHOT_DIR.glob("*.json"), key=lambda f: f.name)
+    points: list[TimelinePoint] = []
+    count = 0
+    path = _SNAPSHOT_METRIC_PATHS[metric]
+    for f in files:
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        tick = data.get("tick", 0)
+        if tick < from_tick or tick > to_tick:
+            continue
+        count += 1
+        value = _snapshot_dig(data, path)
+        if isinstance(value, (int, float)):
+            points.append(TimelinePoint(tick=tick, value=float(value)))
+        else:
+            points.append(TimelinePoint(tick=tick, value=None))
+    return TimelineResponse(
+        metric=metric, from_tick=from_tick, to_tick=to_tick,
+        points=points, snapshot_count=count,
+    )
 
 
 # ─── WebSocket ───────────────────────────────────────────────

@@ -261,7 +261,27 @@ class TechnologySystem:
                 if not researchable:
                     continue
                 target = self.rng.choice(researchable)
+                ideology_modifier = 0.0
+                try:
+                    ideology_modifier = sim.world.ideology_manager.get_technology_modifier(
+                        researcher.agent_id, target.name
+                    )
+                except Exception:
+                    pass
+                if ideology_modifier < -0.5:
+                    continue
+
+                restriction = sim.governance.get_tech_restriction(target.name)
+                if restriction and restriction.active:
+                    research_prob = 1.0 - restriction.restriction_level
+                    if restriction.restriction_level > 0.7:
+                        continue
+                    if self.rng.random() >= research_prob:
+                        continue
+
                 progress = researcher.state.education_level * 2.0 * self.rng.uniform(0.5, 1.5)
+                if ideology_modifier > 0.5:
+                    progress *= (1.0 + ideology_modifier)
                 discovered = self.research(target.id, progress, researcher.agent_id)
                 if discovered:
                     target.discovery_tick = sim.world.state.tick

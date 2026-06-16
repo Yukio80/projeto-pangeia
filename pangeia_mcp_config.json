@@ -15,7 +15,10 @@
         "pangeia://technology",
         "pangeia://agents/summary",
         "pangeia://news",
-        "pangeia://diplomacy"
+        "pangeia://diplomacy",
+        "pangeia://history",
+        "pangeia://snapshots",
+        "pangeia://timeline/{metric}"
       ]
     }
   }

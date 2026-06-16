@@ -67,6 +67,24 @@ class Government:
         }
 
 
+@dataclass
+class TechRestriction:
+    technology_name: str
+    restriction_level: float = 0.0
+    proposed_tick: int = 0
+    active: bool = False
+    votes_for: int = 0
+    votes_against: int = 0
+
+    def as_dict(self) -> dict:
+        return {
+            "technology": self.technology_name,
+            "restriction_level": round(self.restriction_level, 3),
+            "active": self.active,
+            "proposed_tick": self.proposed_tick,
+        }
+
+
 class GovernanceSystem:
     def __init__(self, config):
         self.config = config
@@ -74,6 +92,7 @@ class GovernanceSystem:
         self.voter_registry: Set[str] = set()
         self.term_tick = 0
         self.election_cycle = config.governance.election_cycle
+        self.tech_restrictions: Dict[str, TechRestriction] = {}
 
     def register_voter(self, agent_id: str):
         self.voter_registry.add(agent_id)
@@ -135,6 +154,31 @@ class GovernanceSystem:
         if tick - self.term_tick >= self.election_cycle:
             self.hold_election(agents, tick)
 
+    def propose_tech_restriction(self, technology_name: str, lobbying_power: float) -> bool:
+        if technology_name in self.tech_restrictions:
+            existing = self.tech_restrictions[technology_name]
+            existing.restriction_level = min(0.8, existing.restriction_level + lobbying_power * 0.1)
+            if existing.restriction_level > 0.5 and not existing.active:
+                existing.active = True
+            return True
+        restriction = TechRestriction(
+            technology_name=technology_name,
+            restriction_level=min(0.8, lobbying_power * 0.8),
+            proposed_tick=self.government.laws[-1].enacted_tick if self.government.laws else 0,
+            active=lobbying_power > 0.5,
+        )
+        self.tech_restrictions[technology_name] = restriction
+        return True
+
+    def get_tech_restriction(self, technology_name: str) -> Optional[TechRestriction]:
+        return self.tech_restrictions.get(technology_name)
+
+    def get_active_restrictions(self) -> list[dict]:
+        return [
+            r.as_dict() for r in self.tech_restrictions.values()
+            if r.active
+        ]
+
     def rng_gauss(self, mu: float, sigma: float) -> float:
         import random
         return random.gauss(mu, sigma)
@@ -145,4 +189,5 @@ class GovernanceSystem:
             "voters": len(self.voter_registry),
             "term_tick": self.term_tick,
             "election_cycle": self.election_cycle,
+            "tech_restrictions": self.get_active_restrictions(),
         }

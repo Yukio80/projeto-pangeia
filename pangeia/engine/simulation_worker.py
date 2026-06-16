@@ -41,6 +41,7 @@ def _build_state_snapshot(sim: Simulation) -> Dict[str, Any]:
             "religion": sim.religion_system.summary(),
             "ideologies": sim.ideology_system.summary(),
             "memes": sim.meme_pool.summarize(),
+            "emergent_ideologies": sim.world.ideology_manager.to_dict(),
         },
         "civilization": sim.civilization_index(),
         "technology": sim.technology.summary(),

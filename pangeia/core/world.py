@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from pangeia.config import SimulationConfig
+from pangeia.culture.ideology_manager import IdeologyManager
 
 
 @dataclass
@@ -85,9 +86,10 @@ class WorldState:
 
 
 class World:
-    def __init__(self, config: SimulationConfig):
+    def __init__(self, config: SimulationConfig, rng: random.Random | None = None):
         self.config = config
         self.state = WorldState()
+        self.ideology_manager = IdeologyManager(self, rng or random)
 
         cfg = config.resources
         self.state.global_resources = ResourcePool(

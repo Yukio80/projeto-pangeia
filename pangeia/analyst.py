@@ -11,6 +11,7 @@ from typing import Any, Literal
 import httpx
 
 API_BASE_URL = os.environ.get("PANGEIA_API_URL", "http://localhost:8000")
+TIMELINE_BASE_URL = os.environ.get("PANGEIA_TIMELINE_URL", API_BASE_URL)
 HTTP_TIMEOUT = 30.0
 
 LLM_PROVIDER: Literal["ollama", "gemini"] = os.environ.get("LLM_PROVIDER", "gemini")  # type: ignore[assignment]
@@ -63,9 +64,11 @@ _ENDPOINTS = [
 
 
 class PangeiaContext:
-    def __init__(self, base_url: str = API_BASE_URL):
+    def __init__(self, base_url: str = API_BASE_URL, timeline_url: str = ""):
         self.base_url = base_url
+        self.timeline_url = timeline_url or TIMELINE_BASE_URL
         self.client = httpx.AsyncClient(base_url=base_url, timeout=HTTP_TIMEOUT)
+        self.timeline_client = httpx.AsyncClient(base_url=self.timeline_url, timeout=HTTP_TIMEOUT)
 
     async def _fetch_one(self, path: str) -> tuple[str, Any]:
         try:
@@ -96,10 +99,27 @@ class PangeiaContext:
         status = data.get("status", {})
         tick = status.get("tick", 0) if isinstance(status, dict) else 0
         data["_tick"] = tick
+
+        data["timelines"] = await self._collect_timeline()
         return data
+
+    async def _collect_timeline(self) -> dict:
+        timelines = {}
+        for metric in ["gdp", "population", "stability", "volatility"]:
+            try:
+                r = await self.timeline_client.get(
+                    "/timeline",
+                    params={"metric": metric},
+                )
+                if r.status_code == 200:
+                    timelines[metric] = r.json()
+            except Exception:
+                pass
+        return timelines
 
     async def close(self):
         await self.client.aclose()
+        await self.timeline_client.aclose()
 
 
 class ReportWriter:
@@ -126,7 +146,7 @@ class ReportWriter:
 
 class PangeiaAnalyst:
     def __init__(self):
-        self.context = PangeiaContext()
+        self.context = PangeiaContext(timeline_url=TIMELINE_BASE_URL)
         self.last_tick: int = 0
 
     async def _call_ollama(self, user_message: str) -> str:
